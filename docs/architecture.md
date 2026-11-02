@@ -2,7 +2,6 @@
 
 A host logs in, builds a quiz by hand or from study notes with the help of a language model, reviews and approves the questions, and opens a game room. Guest players join with the room code and a nickname, answer each question the host opens, and see the correct answer and the leaderboard after every round.
 
-**Requirements covered:** five independently runnable services (T01), REST between services and Socket.IO to browsers (T02), one owner per piece of data (T03).
 
 ## The 5 services
 
