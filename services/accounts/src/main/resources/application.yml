@@ -1,0 +1,16 @@
+server:
+  port: ${ACCOUNTS_PORT:8081}
+
+spring:
+  application:
+    name: accounts
+  config:
+    import: optional:file:.env[.properties]
+  mvc:
+    problemdetails:
+      enabled: true
+
+quizroom:
+  jwt:
+    secret: ${JWT_SECRET}
+    ttl: ${JWT_TTL:PT8H}
