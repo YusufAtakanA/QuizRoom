@@ -8,6 +8,6 @@ QuizRoom: hosts build multiple-choice quizzes (by hand or from study notes with 
 | [architecture.md](architecture.md) | The 5 services, how they talk, data ownership, security, reliability rules, stack, and folder layout |
 | [game-flow.md](game-flow.md) | Sequence diagram of one full game, from login to stored results |
 | [accounts-flow.md](accounts-flow.md) | Sequence diagram of registration, login, and token checks |
-| [api.md](api.md) | Every REST endpoint and Socket.IO event, with payloads and errors |
+| [api.md](api.md) | Every REST endpoint and live relay event, with payloads and errors |
 
 Diagrams are written in [Mermaid](https://mermaid.js.org/), so GitHub renders them directly and they can be edited as text.

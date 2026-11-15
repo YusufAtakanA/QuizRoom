@@ -59,37 +59,54 @@ Validation (T06): required fields present, number of questions ≤ `count`, non-
 
 ## Live Game Sessions — `:3000`
 
-### REST
+Every action is a REST call. Live events are published on the room's [ittysockets](https://ittysockets.com/) channel. Errors carry an extra `code` field, for example `{"status": 409, "code": "ALREADY_ANSWERED", "detail": "..."}`.
 
-| Method | Path | Auth | Request → Response |
-|---|---|---|---|
-| POST | `/api/rooms` | JWT | `{quizId}` → 201 `{roomId, roomCode}`; 409 quiz not ready; 503 library unavailable |
-| GET | `/api/rooms/{code}` | public | → 200 `{status: LOBBY \| IN_PROGRESS \| FINISHED}`; 404 unknown code |
+### REST: host (JWT, room owner only)
 
-### Socket.IO: client → server
-
-| Event | Sent by | Payload | Reply (ack) |
-|---|---|---|---|
-| `host:join` | host (JWT in `auth.token`) | `{roomCode}` | `{participants}` or error `NOT_HOST` |
-| `player:join` | player | `{roomCode, nickname}` | `{sessionId}` or error `ROOM_NOT_FOUND`, `ROOM_NOT_JOINABLE`, `NICKNAME_TAKEN` |
-| `host:start` | host | `{}` | error `INVALID_STATE` if not in lobby |
-| `host:open-question` | host | `{}` | opens the next question; error `INVALID_STATE` if one is already open or none left |
-| `answer:submit` | player | `{sessionId, optionIndex}` | `{accepted: true}` or `{accepted: false, code: QUESTION_CLOSED \| ALREADY_ANSWERED \| NOT_IN_ROOM}` |
-| `host:close-question` | host | `{}` | error `INVALID_STATE` if no question is open; `SCORING_UNAVAILABLE` if Scoring fails |
-| `host:end` | host | `{}` | — |
-
-### Socket.IO: server → client
-
-| Event | Sent to | Payload |
+| Method | Path | Request → Response |
 |---|---|---|
-| `participants:update` | everyone in the room | `[{nickname, connected}]` |
-| `game:started` | everyone | `{questionCount}` |
-| `question:opened` | everyone | `{index, text, options}` — never the correct answer |
-| `answers:count` | host | `{submitted, total}` |
-| `question:closed` | everyone | `{index, correctIndex, explanation}` |
-| `leaderboard:update` | everyone | `[{nickname, score, rank}]` |
-| `game:ended` | everyone | `{scoreboard: [{nickname, score, rank}]}` |
-| `error` | the sender | `{code, message}` |
+| POST | `/api/rooms` | `{quizId}` → 201 `{roomId, roomCode, channel, joinKey}`; 409 `QUIZ_NOT_READY`; 503 `LIBRARY_UNAVAILABLE` |
+| POST | `/api/rooms/{code}/start` | → 200; 409 `INVALID_STATE` if not in lobby |
+| POST | `/api/rooms/{code}/open-question` | → 200 `{index}`; 409 `INVALID_STATE` if a question is already open or none are left |
+| POST | `/api/rooms/{code}/close-question` | → 200 leaderboard; 409 `INVALID_STATE` if no question is open; 503 `SCORING_UNAVAILABLE` (question stays closed, call again to retry scoring) |
+| POST | `/api/rooms/{code}/end` | → 200 final scoreboard |
+
+### REST: players (public)
+
+| Method | Path | Request → Response |
+|---|---|---|
+| GET | `/api/rooms/{code}` | → 200 `{status: LOBBY \| IN_PROGRESS \| FINISHED}`; 404 `ROOM_NOT_FOUND` |
+| POST | `/api/rooms/{code}/players` | `{nickname}` → 201 `{sessionId, participantId, channel, joinKey}`; 404 `ROOM_NOT_FOUND`; 409 `ROOM_NOT_JOINABLE` or `NICKNAME_TAKEN` |
+| POST | `/api/rooms/{code}/answers` | `{sessionId, optionIndex}` → 200 `{accepted: true}`; 403 `NOT_IN_ROOM`; 409 `QUESTION_CLOSED` or `ALREADY_ANSWERED` |
+
+`sessionId` is secret and proves who is answering. `participantId` is public and is the player's alias on the relay.
+
+### Connecting to the relay
+
+```ts
+import { connect } from 'itty-sockets'
+
+const room = connect(channel, { joinKey, as: participantId, announce: true }) // host: no `as`/`announce`
+room.on('question:opened', ({ message }) => showQuestion(message))
+```
+
+Only Live Game Sessions holds the channel's `sendKey`, so clients can listen but cannot publish.
+
+### Relay events (published by Live Game Sessions, received by host and players)
+
+Each message is JSON with a `type` field, which itty-sockets uses to route it to `.on(type, ...)`.
+
+| `type` | Payload |
+|---|---|
+| `participants:update` | `{participants: [{participantId, nickname, connected}]}` |
+| `game:started` | `{questionCount}` |
+| `question:opened` | `{index, text, options}` — never the correct answer |
+| `answers:count` | `{index, submitted, total}` |
+| `question:closed` | `{index, correctIndex, explanation}` |
+| `leaderboard:update` | `{leaderboard: [{nickname, score, rank}]}` |
+| `game:ended` | `{scoreboard: [{nickname, score, rank}]}` |
+
+Live Game Sessions also listens for the relay's own `join` and `leave` events (sent because players connect with `announce: true`) to mark participants connected or disconnected.
 
 ## Scoring — `:8083`
 
