@@ -2,3 +2,9 @@ target/
 .env
 .idea/
 *.iml
+data/
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+dist/

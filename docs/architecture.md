@@ -8,12 +8,12 @@ A host logs in, builds a quiz by hand or from study notes with the help of a lan
 | Service | Port | Stack | What it does | Its data |
 |---|---|---|---|---|
 | **Accounts** | 8081 | Java / Spring Boot | Registers hosts, checks their login, issues JWTs | `hosts` (id, email, password, displayName) — in memory for now |
-| **Question Library** | 8082 | Java / Spring Boot | Quizzes and questions, draft/approved status, notes and explanations, calls AI for drafts, hands out quiz snapshots | `quizzes`, `questions` in PostgreSQL `library` |
+| **Question Library** | 8082 | Java / Spring Boot | Quizzes and questions, draft/approved status, notes and explanations, calls AI for drafts, hands out quiz snapshots | `quiz`, `question`, `question_options` in an H2 file database (`data/library`) |
 | **Live Game Sessions** | 3000 | TypeScript / Node.js / itty-sockets | Room codes, participants, game state, which question is open, accepted answers, publishes all live events | In memory (a room only lives while the game runs) |
-| **Scoring** | 8083 | Java / Spring Boot | Checks answers, awards points, keeps totals and ranks, stores finished games | `games`, `answers`, `scores` in PostgreSQL `scoring` |
+| **Scoring** | 8083 | Java / Spring Boot | Checks answers, awards points, keeps totals and ranks, stores finished games | `game`, `participant` (running score), `scored_question` in an H2 file database (`data/scoring`) |
 | **AI Quiz Authoring** | 8000 | Python / FastAPI | Sends notes to a pretrained language model, parses the JSON answer, validates every draft | None (stateless) |
 
-One PostgreSQL server with a separate database per service. No service reads another service's database; it calls that service's API instead.
+Each service that stores data has its own embedded H2 database file, so nothing has to be installed and data survives restarts. No service reads another service's database; it calls that service's API instead. Moving to PostgreSQL later only changes the database URL and driver.
 
 ## How they talk
 
@@ -29,7 +29,7 @@ One PostgreSQL server with a separate database per service. No service reads ano
 2. The host and every player get the channel name and `joinKey` from Live Game Sessions over REST, so only people in the room can listen.
 3. Clients connect without the `sendKey`, so the relay rejects anything they try to send. A player cannot fake a "question closed" or a leaderboard.
 4. Players connect with `as: <participantId>` and `announce: true`. The relay tells Live Game Sessions when that participant joins or leaves, which drives the participant list.
-5. The channel disappears when the last connection closes; Live Game Sessions disconnects when the game ends.
+5. The channel disappears when the last connection closes; Live Game Sessions disconnects when the game ends. If its connection drops mid-game, it reconnects with the same keys after 1 second, and events published in the meantime are sent on reconnect.
 
 ```mermaid
 flowchart LR
@@ -46,8 +46,8 @@ flowchart LR
 
     RELAY(["ittysockets relay<br/>(hosted)"])
     LLM(["Pretrained LLM<br/>provider API"])
-    LIBDB[("PostgreSQL<br/>library")]
-    SCODB[("PostgreSQL<br/>scoring")]
+    LIBDB[("H2 file<br/>library")]
+    SCODB[("H2 file<br/>scoring")]
 
     Host -- "REST: register, login" --> ACC
     Host -- "REST: quizzes, drafts, approval" --> LIB
@@ -96,7 +96,7 @@ The full step-by-step sequence is in [game-flow.md](game-flow.md); every endpoin
 
 | Rule | How |
 |---|---|
-| Timeouts on every service call (T02) | Library → AI: 60 s (models are slow). Sessions → Library / Scoring: 5 s. |
+| Timeouts on every service call (T02) | Library → AI: 120 s (the model can take a while; AI Quiz Authoring keeps its own work under 100 s). Sessions → Library / Scoring: 5 s. |
 | Defined errors (T02, F11) | REST errors use one JSON shape: `{type, title, status, detail}` (RFC 7807). Live Game Sessions adds a `code` field (for example `ROOM_NOT_FOUND`). |
 | Failure is never success (T02) | If AI is down, the host gets 503 and nothing is saved. If Scoring is down, the question stays closed-but-unscored and the host can retry. |
 | Server decides (T05) | Only Live Game Sessions decides if a question is open and if a player may answer. Scores are computed only by Scoring, never taken from a client. |
@@ -106,11 +106,11 @@ The full step-by-step sequence is in [game-flow.md](game-flow.md); every endpoin
 
 ## Stack
 
-- Java 21 + Spring Boot 3 for Accounts, Question Library, Scoring (Spring Security for JWTs, Spring Data JPA + Flyway for PostgreSQL)
+- Java 21 + Spring Boot 3 for Accounts, Question Library, Scoring (Spring Security for JWTs, Spring Data JPA for the database)
 - TypeScript + Node.js 22+ for Live Game Sessions, with the `itty-sockets` npm package to publish on the relay
 - Python + FastAPI for AI Quiz Authoring (automatic Swagger docs at `/docs`)
-- PostgreSQL, one server, one database per service
-- Web frontend with the `itty-sockets` client to listen for live events
+- H2 embedded database in file mode, one file per service
+- React + TypeScript + Vite frontend. Its dev server forwards each `/api/...` path to the service that owns it, so the browser talks to one origin (no CORS). Live events come through the `itty-sockets` client.
 - Configuration through environment variables, one `.env.example` per service (no real secrets)
 
 ### Note on real-time
