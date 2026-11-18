@@ -12,11 +12,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 @Service
 public class AccountService {
+
+    static final String ISSUER = "quizroom-accounts";
+    static final List<String> AUDIENCE =
+            List.of("quizroom-accounts", "quizroom-library", "quizroom-scoring", "quizroom-sessions");
 
     private final HostStore hosts;
     private final JwtEncoder jwtEncoder;
@@ -43,6 +48,8 @@ public class AccountService {
 
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(ISSUER)
+                .audience(AUDIENCE)
                 .subject(host.id().toString())
                 .claim("email", host.email())
                 .issuedAt(now)

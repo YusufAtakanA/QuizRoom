@@ -7,8 +7,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -16,6 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -44,6 +49,10 @@ public class SecurityConfig {
 
     @Bean
     JwtDecoder jwtDecoder(SecretKey jwtKey) {
-        return NimbusJwtDecoder.withSecretKey(jwtKey).build();
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtKey).build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer("quizroom-accounts"),
+                new JwtClaimValidator<List<String>>(JwtClaimNames.AUD, aud -> aud != null && aud.contains("quizroom-accounts"))));
+        return decoder;
     }
 }

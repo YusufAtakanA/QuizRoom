@@ -1,6 +1,8 @@
 package com.quizroom.accounts;
 
 import com.jayway.jsonpath.JsonPath;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -9,6 +11,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -43,6 +48,11 @@ class AccountsApiTest {
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andReturn().getResponse().getContentAsString();
         String token = JsonPath.read(body, "$.accessToken");
+
+        JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
+        assertEquals("quizroom-accounts", claims.getIssuer());
+        assertEquals(List.of("quizroom-accounts", "quizroom-library", "quizroom-scoring", "quizroom-sessions"),
+                claims.getAudience());
 
         mvc.perform(get("/api/accounts/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
