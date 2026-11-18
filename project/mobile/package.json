@@ -1,0 +1,28 @@
+{
+  "name": "quizroom-mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~58.0.26",
+    "expo-camera": "~58.0.14",
+    "expo-constants": "~58.0.16",
+    "expo-haptics": "~58.0.8",
+    "expo-status-bar": "~58.0.5",
+    "itty-sockets": "^0.9.3",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start --port 8090",
+    "android": "expo start --port 8090 --android",
+    "ios": "expo start --port 8090 --ios",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/core.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true
+}
