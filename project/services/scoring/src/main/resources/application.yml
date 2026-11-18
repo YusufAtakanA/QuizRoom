@@ -1,0 +1,26 @@
+server:
+  port: ${SCORING_PORT:8083}
+
+spring:
+  application:
+    name: scoring
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${SCORING_DB_URL:jdbc:h2:file:./data/scoring}
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  mvc:
+    problemdetails:
+      enabled: true
+
+quizroom:
+  jwt:
+    secret: ${JWT_SECRET}
