@@ -1,4 +1,8 @@
-# QuizRoom
-A Microservice Based Real Time Quiz Platform with AI-Assisted Question Generation
+---
+name: Yusuf Atakan AKYÜZ
+neptun: OKG649
+---
 
-Documentation, architecture, and diagrams are in [docs/](docs/README.md).
+# Programming 5
+
+This repository tracks my homework, my individual project and my presentations for the course in one place. The individual project is QuizRoom: see [project/README.md](project/README.md).
