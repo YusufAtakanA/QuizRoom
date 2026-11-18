@@ -2,7 +2,7 @@
 
 One complete game: the host logs in, builds a quiz with AI help, opens a room, players join and answer, and the host sees the stored results afterwards.
 
-Solid arrows are REST requests and responses. Open arrowheads are WebSocket messages through the [ittysockets](https://ittysockets.com/) relay. Every event Live Game Sessions publishes reaches the host and all players; the diagram draws it once to keep it readable. Event names and payloads are listed in [api.md](api.md).
+Solid arrows are REST requests and responses. Open arrowheads are WebSocket messages through the [ittysockets](https://ittysockets.com/) relay. Every event Live Game Sessions publishes reaches the host and all players; the diagram draws it once to keep it readable. Every event also carries `version` and a per-room `eventId`, and a client that misses events reloads the room snapshot; see [api.md](api.md) for event names, payloads and the snapshot.
 
 ```mermaid
 sequenceDiagram
@@ -30,7 +30,7 @@ sequenceDiagram
     LIB->>AI: POST /generate {notes, count}
     alt AI unavailable or timeout
         AI--xLIB: error / no answer
-        LIB-->>Host: 503 "AI generation unavailable", nothing saved
+        LIB-->>Host: 503 unavailable or 504 timeout, nothing saved
     else drafts returned
         AI-->>LIB: valid drafts + rejected list
         LIB-->>Host: 201 questions saved as DRAFT

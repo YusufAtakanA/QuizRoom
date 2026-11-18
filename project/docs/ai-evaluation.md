@@ -1,6 +1,6 @@
 # AI Quiz Authoring: evaluation (T07)
 
-This page explains how the generated drafts from the AI Quiz Authoring service (`services/ai-quiz-authoring`) are evaluated, how to run the evaluation, how to review the output, and how to read the results.
+This page explains how the generated drafts from the AI Quiz Authoring service (`project/services/ai-quiz-authoring`) are evaluated, how to run the evaluation, how to review the output, and how to read the results.
 
 ## What is measured
 
@@ -18,7 +18,7 @@ Every run records the model id, prompt version, effort level, `max_tokens` and r
 
 ## Method
 
-- **Fixed inputs:** five original study notes in `services/ai-quiz-authoring/eval/notes/` (photosynthesis, HTTP basics, supply and demand, Newton's laws, the French Revolution), 300–600 words each. Do not change them between runs you want to compare; add new files instead and mention it in the comparison.
+- **Fixed inputs:** five original study notes in `project/services/ai-quiz-authoring/eval/notes/` (photosynthesis, HTTP basics, supply and demand, Newton's laws, the French Revolution), 300–600 words each. Do not change them between runs you want to compare; add new files instead and mention it in the comparison.
 - **Same code path as production:** `evaluate.py` calls the same `generator.generate` function the `/generate` endpoint uses (same prompt, schema, model call, and validation), in-process, not over HTTP.
 - **Configuration:** model, effort, timeout and retries come from the same environment variables as the service (`AI_MODEL`, `AI_EFFORT`, `AI_TIMEOUT_SECONDS`, `AI_MAX_RETRIES`). The prompt version is the `PROMPT_VERSION` constant in `generator.py`; change it whenever the prompt or schema changes.
 - **Repetition:** use `--runs N` to call the model several times per note, which shows how stable validity and timing are.
@@ -26,7 +26,7 @@ Every run records the model id, prompt version, effort level, `max_tokens` and r
 ## How to run
 
 ```bash
-cd services/ai-quiz-authoring
+cd project/services/ai-quiz-authoring
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt -r requirements-dev.txt   # Linux/macOS: .venv/bin/python
 cp .env.example .env    # then put your own ANTHROPIC_API_KEY in .env (never commit it)

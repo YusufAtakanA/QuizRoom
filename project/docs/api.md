@@ -2,6 +2,8 @@
 
 All REST payloads are JSON. Protected endpoints need `Authorization: Bearer <JWT>` from Accounts. "Owner" means the host id in the token must match the owner of the quiz, room, or game.
 
+Tokens are HS256, signed with the shared `JWT_SECRET`, and carry `sub` (host id), `email`, `iat`, `exp`, `iss = "quizroom-accounts"` and `aud = ["quizroom-accounts", "quizroom-library", "quizroom-scoring", "quizroom-sessions"]`. Each service accepts a token only if `iss` is `quizroom-accounts` and `aud` contains its own name: `quizroom-accounts` (Accounts), `quizroom-library` (Question Library), `quizroom-scoring` (Scoring), `quizroom-sessions` (Live Game Sessions). A token that fails this check gets 401, exactly like an invalid or expired token. See [ADR 0006](adr/0006-jwt-shared-secret.md).
+
 REST errors use one shape (RFC 7807):
 
 ```json
@@ -63,7 +65,7 @@ Every action is a REST call. Live events are published on the room's [ittysocket
 
 ### REST: host (JWT, room owner only)
 
-Another host gets 404 `ROOM_NOT_FOUND`; a missing, invalid, or expired token gets 401 `UNAUTHORIZED`.
+Another host gets 404 `ROOM_NOT_FOUND`; a missing, invalid, or expired token, or one without issuer `quizroom-accounts` and audience `quizroom-sessions`, gets 401 `UNAUTHORIZED`.
 
 | Method | Path | Request → Response |
 |---|---|---|
@@ -77,13 +79,57 @@ Another host gets 404 `ROOM_NOT_FOUND`; a missing, invalid, or expired token get
 
 | Method | Path | Request → Response |
 |---|---|---|
-| GET | `/api/rooms/{code}` | → 200 `{status: LOBBY \| IN_PROGRESS \| FINISHED}`; 404 `ROOM_NOT_FOUND` |
+| GET | `/api/rooms/{code}` | → 200 `{status: LOBBY \| IN_PROGRESS \| FINISHED}`, or the full snapshot for the host or a player of the room (see [Room snapshot](#room-snapshot)); 404 `ROOM_NOT_FOUND` |
 | POST | `/api/rooms/{code}/players` | `{nickname}` (1–20 characters) → 201 `{sessionId, participantId, channel, joinKey}`; 400 `INVALID_REQUEST`; 404 `ROOM_NOT_FOUND`; 409 `ROOM_NOT_JOINABLE`, `NICKNAME_TAKEN` (case-insensitive), or `ROOM_FULL` (100 players) |
 | POST | `/api/rooms/{code}/answers` | `{sessionId, optionIndex}` → 200 `{accepted: true, index}`; 400 `INVALID_REQUEST`; 403 `NOT_IN_ROOM`; 409 `QUESTION_CLOSED` or `ALREADY_ANSWERED` |
 
 `sessionId` is secret and proves who is answering. `participantId` is public and is the player's alias on the relay. Room codes are 6 characters and case-insensitive.
 
 All rooms live in memory. A room with no requests for 4 hours is removed the next time any room is created; after that its code returns 404 and can be reused. Finished games stay available from Scoring.
+
+### Room snapshot
+
+`GET /api/rooms/{code}` is public, but how much it returns depends on who asks.
+
+- **No credentials, or credentials that do not match this room:** 200 `{status}` only. An invalid token, a token of another host, or an unknown session id is not an error here; it just gets `{status}`.
+- **The room's host:** header `Authorization: Bearer <JWT>` that verifies and whose `sub` is the room's host → full snapshot.
+- **A player of this room:** header `X-Session-Id: <sessionId>` → full snapshot.
+- Unknown room code: 404 `ROOM_NOT_FOUND`.
+
+Credentials never go in the URL.
+
+Full snapshot:
+
+```json
+{
+  "status": "IN_PROGRESS",
+  "eventId": 12,
+  "questionCount": 5,
+  "participants": [{ "participantId": "…", "nickname": "Ada", "connected": true }],
+  "question": { "index": 1, "text": "…", "options": ["…", "…", "…", "…"] },
+  "open": false,
+  "answers": { "index": 1, "submitted": 9, "total": 10 },
+  "reveal": { "index": 1, "correctIndex": 2, "explanation": "…" },
+  "leaderboard": [{ "playerId": "…", "nickname": "Ada", "score": 2, "rank": 1 }],
+  "scoreboard": null
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `status` | `LOBBY`, `IN_PROGRESS` or `FINISHED` |
+| `eventId` | The `eventId` of the last published event when the snapshot was taken; 0 if nothing was published yet |
+| `questionCount` | Number of questions in the room's quiz |
+| `participants` | `[{participantId, nickname, connected}]`, same as `participants:update` |
+| `question` | The current question `{index, text, options}`, open or closed; `null` before the first question. Never contains `correctIndex` |
+| `open` | `true` while the current question accepts answers |
+| `answers` | `{index, submitted, total}` for the current question, or `null` |
+| `reveal` | `{index, correctIndex, explanation}` only after the current question has been scored; otherwise `null`. The correct answer is never in the snapshot while the current question is unscored |
+| `leaderboard` | Latest leaderboard from Scoring, `[]` before any question is scored |
+| `scoreboard` | Final scoreboard when `FINISHED`, otherwise `null` |
+| `myAnswer` | Only in a player's snapshot: that player's own option index for the current question, or `null` if they have not answered (or there is no current question). Lets a player who reloads see their locked answer and the right result at the reveal |
+
+Clients load the snapshot when the page opens, every time the relay connection opens, and when they notice a gap in `eventId` (see [Reconnect and resync](architecture.md#reconnect-and-resync)).
 
 ### Connecting to the relay
 
@@ -98,7 +144,15 @@ Only Live Game Sessions holds the channel's `sendKey`, so clients can listen but
 
 ### Relay events (published by Live Game Sessions, received by host and players)
 
-Each message is JSON with a `type` field, which itty-sockets uses to route it to `.on(type, ...)`.
+Every message has the same envelope: `{ type, version: 1, eventId, ...payload }`.
+
+- `type` is the event name; itty-sockets uses it to route the message to `.on(type, ...)`.
+- `version` is always `1`.
+- `eventId` is a per-room counter. It starts at 0 and each publish adds 1, so the first event of a room has `eventId` 1 and every event has a number one higher than the one before.
+
+The relay delivers each message at most once and keeps nothing. A client that misses events (`eventId` jumps by more than 1) loads the [room snapshot](#room-snapshot) again. Clients ignore events with an `eventId` they have already seen and events without a numeric `eventId`.
+
+Payloads (inside the envelope):
 
 | `type` | Payload |
 |---|---|

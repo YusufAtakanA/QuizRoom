@@ -2,7 +2,9 @@
 
 How a host registers, logs in, and uses the token, and how other services check that token without calling Accounts.
 
-Accounts signs tokens with one shared `JWT_SECRET` (HS256). The other services check tokens with the same secret. The token's `sub` claim holds the host's id, which is how other services know who owns a quiz or a room.
+Accounts signs tokens with one shared `JWT_SECRET` (HS256). The other services check tokens with the same secret. The token's `sub` claim holds the host's id, which is how other services know who owns a quiz or a room. Every token has the issuer `quizroom-accounts` and the audience `quizroom-accounts`, `quizroom-library`, `quizroom-scoring` and `quizroom-sessions`; each service also checks that the issuer is right and that its own name is in the audience ([ADR 0006](adr/0006-jwt-shared-secret.md)).
+
+Hosts are kept in memory and passwords are compared as plain text. This does not meet T03 and T04; see [ADR 0004](adr/0004-accounts-in-memory-plaintext.md).
 
 ```mermaid
 sequenceDiagram
@@ -48,7 +50,7 @@ sequenceDiagram
         AS-->>AC: throw 401 "Invalid email or password"
         AC-->>FE: 401 Unauthorized
     else match
-        AS->>JE: encode(HS256, {sub=hostId, email, iat, exp})
+        AS->>JE: encode(HS256, {iss, aud, sub=hostId, email, iat, exp})
         JE-->>AS: signed JWT
         AS-->>AC: TokenResponse
         AC-->>FE: 200 OK {accessToken, tokenType, expiresIn}
@@ -58,7 +60,7 @@ sequenceDiagram
     rect rgba(200,160,80,0.15)
     Note over FE,HS: Protected request (Accounts)
     FE->>AC: GET /api/accounts/me (Bearer JWT)
-    alt token invalid / expired
+    alt token invalid, expired, wrong iss or aud
         AC-->>FE: 401 Unauthorized
     else token valid
         AC->>AS: getHost(jwt.sub)
@@ -71,8 +73,8 @@ sequenceDiagram
     rect rgba(200,80,120,0.15)
     Note over FE,QL: Other services validate token locally
     FE->>QL: GET /api/quizzes (Bearer JWT)
-    QL->>QL: verify with shared JWT_SECRET
-    alt token invalid
+    QL->>QL: verify signature with JWT_SECRET, iss and aud
+    alt token invalid, wrong iss, or aud without quizroom-library
         QL-->>FE: 401 Unauthorized
     else token valid
         QL-->>FE: 200 OK [host's quizzes]
@@ -84,5 +86,5 @@ sequenceDiagram
 
 1. **Registration.** Input is validated, then the host is stored only if the email is not taken yet (`putIfAbsent` makes the check and the insert one step).
 2. **Login.** Unknown email and wrong password return the same 401 message, so nobody can find out which emails are registered. On success Accounts returns a signed JWT.
-3. **Protected request.** Spring Security checks the token's signature and expiry before the controller runs. The controller reads the host id from `sub`.
-4. **Other services.** Question Library, Live Game Sessions, and Scoring verify the same token locally with `JWT_SECRET`. No call to Accounts is needed.
+3. **Protected request.** Spring Security checks the token's signature, expiry, issuer and audience before the controller runs. The controller reads the host id from `sub`.
+4. **Other services.** Question Library, Live Game Sessions, and Scoring verify the same token locally with `JWT_SECRET` and check that the issuer is `quizroom-accounts` and that their own name is in the audience. No call to Accounts is needed.
