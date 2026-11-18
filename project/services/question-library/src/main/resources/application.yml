@@ -1,0 +1,26 @@
+server:
+  port: ${LIBRARY_PORT:8082}
+
+spring:
+  application:
+    name: question-library
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${LIBRARY_DB_URL:jdbc:h2:file:./data/library}
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  mvc:
+    problemdetails:
+      enabled: true
+
+quizroom:
+  jwt:
+    secret: ${JWT_SECRET}
+  ai:
+    url: ${AI_URL:http://localhost:8000}
+    timeout: ${AI_TIMEOUT:PT120S}
